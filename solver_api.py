@@ -8,11 +8,13 @@ class WordleSolver:
     def __init__(self,
                  seed_word_strategy: int = 1 ,
                  guessed_words: None | list[str] = None,
+                 wordle_game_api: str = "http://127.0.0.1:8000/wordle",
                  word_list_api: str = "https://cheaderthecoder.github.io/5-Letter-words/words.json",
                  seed=None,
                  ):
         
         # Init some class vars
+        self.wordle_game_api = wordle_game_api
         self.word_list_path = Path("word_lists/words.json")
         self.word_list_api = word_list_api
         self.guesses_used = 0
@@ -37,7 +39,17 @@ class WordleSolver:
         
         # Obtain a word list of all english 5 letter words
         self.word_list = self._get_word_list()
-        print("Starting word list length", len(self.word_list))
+        
+    
+    def reset(self):
+        self.guesses_used = 0
+        self.word_list = self._get_word_list()
+        self.letter_dict = {
+            "gray": [],
+            "yellow": [],
+            "green": [],
+        }
+        return True
         
         
     def _get_word_list(self):
@@ -80,7 +92,7 @@ class WordleSolver:
 
 
     @staticmethod
-    def _update_word_list(word_list: list[str], letter_dict: dict) -> list[str]:
+    def _update_word_list(word_list: list[str], letter_dict: dict, verbose=False) -> list[str]:
         """Removes invalid words based on the letter_dict"""
         
         # Init a word list for filtering
@@ -111,16 +123,26 @@ class WordleSolver:
                             filtered_word_list.remove(word)
                             break
         
-        print("Current filtered word list length:", len(filtered_word_list))
+        if verbose: print("Current filtered word list length:", len(filtered_word_list))
         
         return filtered_word_list
     
     
-    def _guess_word(self, guess: str):
+    def _guess_word(self, guess: str, verbose=False):
         
         # Guess a word
-        print(f"WordleSolver guesses: '{guess}'...")
-        feedback = input(f"Enter feedback for '{guess}' (e.g., '00120' for 'gray, gray, yellow, green, gray): ")
+        if verbose: print(f"WordleSolver guesses: '{guess}'...")
+        response = requests.post(url=self.wordle_game_api, json={"guess": guess})
+        if response.status_code == 200:
+            feedback = response.json()["feedback"]
+            if verbose: 
+                print(f"Received guess feedback: {feedback}")
+                summary = response.json()["game_summary"]
+                if summary is not None:
+                    print(summary)
+        else:
+            raise ValueError("Failed to fetch feedback from wordle game api...")
+        
         self.guesses_used += 1
         
         # Check if feedback says it is solved
@@ -143,12 +165,12 @@ class WordleSolver:
         return False
         
       
-    def solve(self):
+    def solve(self, verbose=False):
         
         # Try out seed words first
         for seed_word in self.seed_words:
             if self._guess_word(guess=seed_word): 
-                print(f"Wordle puzzle solved in {self.guesses_used} guesses!\nThe word was '{seed_word}'")
+                if verbose: print(f"Wordle puzzle solved in {self.guesses_used} guesses!\nThe word was '{seed_word}'")
                 return True
         
         # Choose random word from word list
@@ -160,11 +182,13 @@ class WordleSolver:
         
         # Catch the result of the solving process
         if solved:
-            print(f"Wordle puzzle solved in {self.guesses_used} guesses!\nThe word was '{guess}'")
+            if verbose: print(f"Wordle puzzle solved in {self.guesses_used} guesses!\nThe word was '{guess}'")
             return True
         else:
-            print(f"WordleSolver ran out of guess ;(")
+            if verbose: print(f"WordleSolver ran out of guess ;(")
             return False
+
+        
         
         
         
@@ -177,7 +201,9 @@ def main():
     strat = int(input(f"Enter the number of seed words to use (0,1,2,3): "))
     solver = WordleSolver(seed_word_strategy=strat, seed=123)
     
-    solver.solve()
+    for _ in range(10):
+        solver.solve()
+        solver.reset()
         
     
 
